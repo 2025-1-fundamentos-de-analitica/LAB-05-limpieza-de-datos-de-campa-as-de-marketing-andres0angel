@@ -1,57 +1,67 @@
-"""
-Escriba el codigo que ejecute la accion solicitada.
-"""
-
-# pylint: disable=import-outside-toplevel
-
+import os
+import zipfile
+import pandas as pd
+from glob import glob
 
 def clean_campaign_data():
-    """
-    En esta tarea se le pide que limpie los datos de una campaña de
-    marketing realizada por un banco, la cual tiene como fin la
-    recolección de datos de clientes para ofrecerls un préstamo.
+    input_dir = "files/input/"
+    output_dir = "files/output/"
+    os.makedirs(output_dir, exist_ok=True)
 
-    La información recolectada se encuentra en la carpeta
-    files/input/ en varios archivos csv.zip comprimidos para ahorrar
-    espacio en disco.
+    client_rows = []
+    campaign_rows = []
+    economics_rows = []
 
-    Usted debe procesar directamente los archivos comprimidos (sin
-    descomprimirlos). Se desea partir la data en tres archivos csv
-    (sin comprimir): client.csv, campaign.csv y economics.csv.
-    Cada archivo debe tener las columnas indicadas.
+    for zip_path in glob(os.path.join(input_dir, "*.csv.zip")):
+        with zipfile.ZipFile(zip_path) as z:
+            for filename in z.namelist():
+                with z.open(filename) as f:
+                    df = pd.read_csv(f)
 
-    Los tres archivos generados se almacenarán en la carpeta files/output/.
+                    # Asegurar que client_id esté presente
+                    if 'client_id' not in df.columns:
+                        continue
 
-    client.csv:
-    - client_id
-    - age
-    - job: se debe cambiar el "." por "" y el "-" por "_"
-    - marital
-    - education: se debe cambiar "." por "_" y "unknown" por pd.NA
-    - credit_default: convertir a "yes" a 1 y cualquier otro valor a 0
-    - mortage: convertir a "yes" a 1 y cualquier otro valor a 0
+                    # CLIENT
+                    df_client = df[['client_id', 'age', 'job', 'marital', 'education',
+                                    'credit_default', 'mortgage']].copy()
 
-    campaign.csv:
-    - client_id
-    - number_contacts
-    - contact_duration
-    - previous_campaing_contacts
-    - previous_outcome: cmabiar "success" por 1, y cualquier otro valor a 0
-    - campaign_outcome: cambiar "yes" por 1 y cualquier otro valor a 0
-    - last_contact_day: crear un valor con el formato "YYYY-MM-DD",
-        combinando los campos "day" y "month" con el año 2022.
+                    df_client['job'] = df_client['job'].str.replace('.', '', regex=False).str.replace('-', '_', regex=False)
+                    df_client['education'] = df_client['education'].str.replace('.', '_', regex=False)
+                    df_client['education'] = df_client['education'].replace('unknown', pd.NA)
+                    df_client['credit_default'] = df_client['credit_default'].apply(lambda x: 1 if str(x).lower() == "yes" else 0)
+                    df_client['mortgage'] = df_client['mortgage'].apply(lambda x: 1 if str(x).lower() == "yes" else 0)
 
-    economics.csv:
-    - client_id
-    - const_price_idx
-    - eurobor_three_months
+                    client_rows.append(df_client)
 
+                    # CAMPAIGN
+                    df_campaign = df[['client_id', 'number_contacts', 'contact_duration',
+                                      'previous_campaing_contacts', 'previous_outcome',
+                                      'campaign_outcome', 'day', 'month']].copy()
 
+                    df_campaign['previous_outcome'] = df_campaign['previous_outcome'].apply(lambda x: 1 if str(x).lower() == "success" else 0)
+                    df_campaign['campaign_outcome'] = df_campaign['campaign_outcome'].apply(lambda x: 1 if str(x).lower() == "yes" else 0)
 
-    """
+                    # Generar fecha
+                    df_campaign['last_contact_day'] = pd.to_datetime(
+                        '2022-' + df_campaign['month'].astype(str) + '-' + df_campaign['day'].astype(str),
+                        errors='coerce'
+                    ).dt.strftime('%Y-%m-%d')
 
-    return
+                    df_campaign = df_campaign[['client_id', 'number_contacts', 'contact_duration',
+                                               'previous_campaing_contacts', 'previous_outcome',
+                                               'campaign_outcome', 'last_contact_day']]
 
+                    campaign_rows.append(df_campaign)
+
+                    # ECONOMICS
+                    df_econ = df[['client_id', 'const_price_idx', 'eurobor_three_months']].copy()
+                    economics_rows.append(df_econ)
+
+    # Concatenar y guardar
+    pd.concat(client_rows, ignore_index=True).to_csv(os.path.join(output_dir, "client.csv"), index=False)
+    pd.concat(campaign_rows, ignore_index=True).to_csv(os.path.join(output_dir, "campaign.csv"), index=False)
+    pd.concat(economics_rows, ignore_index=True).to_csv(os.path.join(output_dir, "economics.csv"), index=False)
 
 if __name__ == "__main__":
     clean_campaign_data()
